@@ -2,7 +2,7 @@ import InstagramAPI from '@/api/Instagram';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useInstagramCredentials } from '@/hooks/useInstagramCredentials';
-import { cleanupVideosAfterPosting } from '@/services/instagramService';
+import { cleanupVideosAfterPosting, publishToInstagramWithOAuth } from '@/services/instagramService';
 import { VideoResult } from '@/types/video';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -122,14 +122,13 @@ export const usePostSubmission = (
     setIsPosting(true);
 
     try {
-      const fullCaption = hashtags ? `${caption}\n\n${hashtags}` : caption;
-
       if (!selectedVideo) {
         toast({
           title: 'Vídeo não selecionado',
           description: 'Por favor, selecione um vídeo para postar.',
           variant: 'destructive',
         });
+        setIsPosting(false);
         return;
       }
 
@@ -145,18 +144,18 @@ export const usePostSubmission = (
         });
       }
 
-      const response = await InstagramAPI.postToInstagram({
-        username: 'postagensai',
-        type: postType,
-        when: isScheduled ? 'schedule' : 'now',
-        schedule_date: isScheduled ? scheduledDateTime?.toISOString() : new Date().toISOString(),
-        video_url: selectedVideo?.videoUrl,
+      // Usando a nova função publishToInstagramWithOAuth
+      const result = await publishToInstagramWithOAuth(
+        selectedVideo.videoUrl,
         caption,
         hashtags,
-      });
+        postType,
+        isScheduled ? 'schedule' : 'now',
+        isScheduled ? scheduledDateTime : undefined
+      );
 
-      if (response.status !== 200) {
-        throw new Error(isScheduled ? 'Não foi possível agendar a postagem' : 'Não foi possível postar o vídeo');
+      if (!result.success) {
+        throw new Error(result.error || (isScheduled ? 'Não foi possível agendar a postagem' : 'Não foi possível postar o vídeo'));
       }
 
       localStorage.removeItem('selectedVideos');

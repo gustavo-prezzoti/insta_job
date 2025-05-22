@@ -45,6 +45,43 @@ const completeOAuthFlow = (tempCode: string) => {
   return API.post('/instagram/oauth/complete', { temp_code: tempCode }, { headers });
 };
 
+// Nova função para publicação direta via OAuth
+const publishToInstagram = ({
+  username,
+  type,
+  when,
+  schedule_date,
+  video_url,
+  caption,
+  hashtags,
+}: {
+  username: string;
+  type: 'feed' | 'reel' | 'story';
+  when: 'now' | 'schedule';
+  schedule_date?: string;
+  video_url: string;
+  caption: string;
+  hashtags?: string;
+}) => {
+  const token = localStorage.getItem('token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    'jwt-token': token || '',
+    'Authorization': token ? `Bearer ${token}` : '',
+  };
+
+  return API.post('/instagram/oauth/publish', {
+    username,
+    type,
+    when,
+    schedule_date,
+    video_url,
+    caption,
+    hashtags
+  }, { headers });
+};
+
 const disconnectInstagram = ({ username }: { username: string }) => API.post('/instagram/disconnect', { username });
 
 const postToInstagram = ({
@@ -76,6 +113,7 @@ const InstagramAPI = {
   completeOAuthFlow,
   disconnectInstagram,
   postToInstagram,
+  publishToInstagram,
   getInstagramPosts,
   getAllInstagramPosts,
   checkInstagramCredentials,

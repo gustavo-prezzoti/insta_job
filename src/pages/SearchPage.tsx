@@ -177,36 +177,65 @@ const SearchPage = () => {
     
     console.log("Continuando com vídeos selecionados:", currentSelectedVideos);
     
-    // Garantir que o primeiro vídeo da lista é o que será usado na próxima tela
-    if (currentSelectedVideos.length > 0) {
-      // Armazenar explicitamente todos os vídeos selecionados no localStorage
-      localStorage.setItem('selectedVideos', JSON.stringify(currentSelectedVideos));
-      // Armazenar explicitamente o vídeo atual selecionado
-      localStorage.setItem('currentSelectedVideo', JSON.stringify(currentSelectedVideos[0]));
-      console.log("Vídeo atual salvo:", currentSelectedVideos[0]);
-    }
-    
-    console.log("Vídeos salvos no localStorage antes de navegar para post-config:", currentSelectedVideos.length);
-    
-    // If we recently authenticated successfully, skip the connection check
-    if (recentlyAuthenticated) {
+    try {
+      // Garantir que o primeiro vídeo da lista é o que será usado na próxima tela
+      if (currentSelectedVideos.length > 0) {
+        // Armazenar explicitamente todos os vídeos selecionados no localStorage
+        localStorage.setItem('selectedVideos', JSON.stringify(currentSelectedVideos));
+        // Armazenar explicitamente o vídeo atual selecionado
+        localStorage.setItem('currentSelectedVideo', JSON.stringify(currentSelectedVideos[0]));
+        console.log("Vídeo atual salvo:", currentSelectedVideos[0]);
+      }
+      
+      console.log("Vídeos salvos no localStorage antes de navegar para post-config:", currentSelectedVideos.length);
+      
+      // Se já estamos autenticados recentemente, pule a verificação de conexão
+      if (recentlyAuthenticated) {
+        console.log("Pulando verificação de conexão, autenticação recente");
+        setTimeout(() => {
+          navigate('/post-config');
+        }, 300);
+        return;
+      }
+      
+      // Verificar o Instagram apenas se o token existir (usuário está logado)
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error("Token não encontrado, redirecionando para login");
+        navigate('/login');
+        return;
+      }
+      
+      // Verificar a conexão com Instagram de forma segura
+      let isConnected = false;
+      try {
+        isConnected = await checkInstagramConnection();
+        console.log("Status da conexão com Instagram:", isConnected);
+      } catch (error) {
+        console.error("Erro ao verificar conexão com Instagram:", error);
+        // Em caso de erro, tentamos prosseguir mesmo assim
+        isConnected = localStorage.getItem('instagram_connected') === 'true';
+      }
+      
+      if (!isConnected) {
+        console.log("Abrindo modal de login do Instagram");
+        setShowInstagramModal(true);
+        return;
+      }
+      
+      // Se chegou aqui, está tudo certo para prosseguir
+      console.log("Navegando para a página de configuração da postagem");
       setTimeout(() => {
         navigate('/post-config');
       }, 300);
-      return;
+    } catch (error) {
+      console.error("Erro ao processar a continuação:", error);
+      toast({
+        title: "Erro ao processar",
+        description: "Ocorreu um erro ao processar sua solicitação. Tente novamente.",
+        variant: "destructive",
+      });
     }
-    
-    // Check the current Instagram connection status before proceeding
-    const isConnected = await checkInstagramConnection();
-    
-    if (!isConnected) {
-      setShowInstagramModal(true);
-      return;
-    }
-    
-    setTimeout(() => {
-      navigate('/post-config');
-    }, 300);
   };
 
   const handleInstagramLogin = async () => {

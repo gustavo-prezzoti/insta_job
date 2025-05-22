@@ -1,14 +1,19 @@
 import Axios from 'axios';
 
-//export const API_URL = 'https://api.viralyx.ai';
+// Em desenvolvimento, o proxy do Vite vai interceptar automaticamente as requisições
+// e encaminhá-las para o servidor correto sem problemas de CORS
+// Mantemos a URL original, já que o proxy no Vite está configurado por path
 export const API_URL = 'https://systemsrvdsv.cloud';
 
 export const API = Axios.create({
-  baseURL: `${API_URL}`,
+  baseURL: '',  // Deixamos vazio para usar URLs relativas que o proxy do Vite irá interceptar
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Log para debug
+console.log('API configurada para usar proxy transparente em desenvolvimento');
 
 export const setToken = (token: string) => {
   if (token && typeof token === 'string') {

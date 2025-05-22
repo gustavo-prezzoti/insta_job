@@ -8,6 +8,28 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      '^/auth/.*': {
+        target: 'https://systemsrvdsv.cloud',
+        changeOrigin: true,
+        secure: false,
+      },
+      '^/user/.*': {
+        target: 'https://systemsrvdsv.cloud',
+        changeOrigin: true,
+        secure: false,
+      },
+      '^/instagram/.*': {
+        target: 'https://systemsrvdsv.cloud',
+        changeOrigin: true,
+        secure: false,
+      },
+      '^/schedule/.*': {
+        target: 'https://systemsrvdsv.cloud',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   plugins: [
     react(),

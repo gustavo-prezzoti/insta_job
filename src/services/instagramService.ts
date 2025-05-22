@@ -574,6 +574,61 @@ export const cleanupVideosAfterPosting = async (videoId: string): Promise<void> 
   }
 };
 
+// Nova função para publicar no Instagram usando OAuth
+export const publishToInstagramWithOAuth = async (
+  videoUrl: string,
+  caption: string,
+  hashtags: string,
+  postType: 'reel' | 'feed' | 'story',
+  when: 'now' | 'schedule' = 'now',
+  scheduledDate?: Date
+): Promise<{ success: boolean; postId?: string; error?: string }> => {
+  try {
+    // Verificando se temos credenciais do Instagram
+    const { hasCredentials, username } = await checkInstagramCredentials();
+
+    if (!hasCredentials || !username) {
+      return { success: false, error: 'Credenciais do Instagram não encontradas. Faça login novamente.' };
+    }
+
+    console.log('Preparando para publicar no Instagram com OAuth:', username);
+
+    // Formatar a data de agendamento se existir
+    const schedule_date = scheduledDate ? scheduledDate.toISOString() : undefined;
+
+    // Chamando a API para publicar via OAuth
+    const response = await InstagramAPI.publishToInstagram({
+      username,
+      type: postType,
+      when,
+      schedule_date,
+      video_url: videoUrl,
+      caption,
+      hashtags
+    });
+
+    if (response.status !== 200) {
+      console.error('Erro na resposta da API:', response.data);
+      return { 
+        success: false, 
+        error: response.data?.message || 'Erro ao publicar no Instagram.' 
+      };
+    }
+
+    console.log('Publicação no Instagram realizada com sucesso via OAuth:', response.data);
+    return {
+      success: true,
+      postId: response.data?.post_id || 'instagram-' + Math.random().toString(36).substring(2, 10),
+    };
+  } catch (error) {
+    console.error('Erro no processo de publicação:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Erro inesperado ao publicar no Instagram.' 
+    };
+  }
+};
+
 // Função para remover credenciais do Instagram
 export const logoutFromInstagram = async (): Promise<boolean> => {
   try {

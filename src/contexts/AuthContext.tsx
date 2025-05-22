@@ -282,39 +282,60 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const localStorageConnected = localStorage.getItem('instagram_connected') === 'true';
       console.log('Status da conexão no localStorage:', localStorageConnected);
       
-      // Then verify with the API
-      console.log('Fazendo chamada à API para verificar status de autenticação');
-      const response = await UserAPI.getMe(localStorage.getItem('token') || '');
-      
-      if (response.status === 200) {
-        console.log('Resposta da API recebida:', response.status);
-        
-        // Check if the user has Instagram sessions
-        const apiConnected = response.data.sessions?.length > 0;
-        console.log('Sessões do Instagram na resposta API:', response.data.sessions?.length || 0);
-        
-        // Update the state and localStorage
-        setIsInstagramConnected(!!apiConnected);
-        localStorage.setItem('instagram_connected', apiConnected ? 'true' : 'false');
-        
-        console.log('Status da conexão atualizado:', apiConnected);
-        return !!apiConnected;
-      } else {
-        console.warn('API retornou status diferente de 200:', response.status);
+      // Se já tivermos informação no localStorage, retorne imediatamente para uma resposta mais rápida
+      if (localStorageConnected) {
+        console.log('Retornando true do localStorage para resposta rápida');
+        return true;
       }
       
-      // If API call fails or returns non-200, return the local storage value
-      console.log('Usando valor do localStorage como fallback:', localStorageConnected);
-      return localStorageConnected;
+      // Verificar se temos token antes de fazer chamada à API
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('Token não encontrado, não é possível verificar conexão com Instagram');
+        return false;
+      }
+      
+      // Then verify with the API
+      console.log('Fazendo chamada à API para verificar status de autenticação');
+      try {
+        const response = await UserAPI.getMe(token);
+        
+        if (response.status === 200) {
+          console.log('Resposta da API recebida:', response.status);
+          
+          // Verificar se a resposta tem o formato esperado
+          if (response.data && typeof response.data === 'object') {
+            // Check if the user has Instagram sessions
+            const apiConnected = response.data.sessions?.length > 0;
+            console.log('Sessões do Instagram na resposta API:', response.data.sessions?.length || 0);
+            
+            // Update the state and localStorage
+            setIsInstagramConnected(!!apiConnected);
+            localStorage.setItem('instagram_connected', apiConnected ? 'true' : 'false');
+            
+            console.log('Status da conexão atualizado:', apiConnected);
+            return !!apiConnected;
+          } else {
+            console.warn('Resposta da API não tem o formato esperado:', response.data);
+            // Não faz sentido atualizar o localStorage com um valor inválido
+            return isInstagramConnected;
+          }
+        } else {
+          console.warn('API retornou status diferente de 200:', response.status);
+        }
+      } catch (apiError) {
+        console.error('Erro na chamada à API:', apiError);
+        // Não desconectar automaticamente se a API falhar
+      }
+      
+      // Se a API falhou ou retornou algo inesperado, mantenha o estado atual
+      console.log('Usando estado atual como fallback:', isInstagramConnected);
+      return isInstagramConnected;
     } catch (error) {
-      console.error('Erro ao verificar conexão com Instagram:', error);
+      console.error('Erro geral ao verificar conexão com Instagram:', error);
       
-      // If there's an error, check localStorage as fallback
-      const fallbackValue = localStorage.getItem('instagram_connected') === 'true';
-      console.log('Usando valor de fallback do localStorage após erro:', fallbackValue);
-      
-      // Keep current state if localStorage is empty
-      return fallbackValue || isInstagramConnected;
+      // Se houver erro, mantenha o estado atual
+      return isInstagramConnected;
     }
   };
 
