@@ -29,6 +29,16 @@ interface OAuthResponse {
   auth_url: string;
 }
 
+// Interface para o erro do Facebook
+interface FacebookOAuthError {
+  error: {
+    message: string;
+    type: string;
+    code: number;
+    fbtrace_id?: string;
+  }
+}
+
 // Interface para o erro do Supabase
 interface SupabaseError {
   message: string;
@@ -59,210 +69,139 @@ export const loginWithInstagramOAuth = async (): Promise<{ success: boolean; err
   try {
     console.log('Iniciando autenticação OAuth com Instagram');
     
-    // Obter o token JWT - tentando de múltiplas fontes
-    let jwtToken = null;
-    
-    // 1. Tentar obter do Supabase primeiro (se estiver usando)
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      jwtToken = session?.access_token;
-    } catch (e) {
-      console.log('Não foi possível obter token do Supabase:', e);
+    // Check if we're already in the process of authenticating
+    if (localStorage.getItem('instagram_auth_in_progress') === 'true') {
+      console.log('Processo de autenticação já está em andamento, não iniciando outro');
+      return { 
+        success: false, 
+        error: 'Já existe um processo de autenticação em andamento. Por favor, conclua ou cancele antes de tentar novamente.' 
+      };
     }
     
-    // 2. Se não conseguiu do Supabase, tentar do localStorage
-    if (!jwtToken) {
-      jwtToken = localStorage.getItem('token');
-      console.log('Usando token do localStorage');
+    // Set flag to indicate authentication is in progress
+    localStorage.setItem('instagram_auth_in_progress', 'true');
+    // Set timestamp for when authentication was started
+    localStorage.setItem('instagram_auth_timestamp', Date.now().toString());
+    
+    // Obter o token JWT
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      console.error('Token JWT não encontrado');
+      localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+      return { success: false, error: 'Você precisa estar logado para conectar ao Instagram' };
     }
     
-    if (!jwtToken) {
-      console.error('Token JWT não encontrado em nenhuma fonte');
-      return { success: false, error: 'Você precisa estar logado para conectar ao Instagram. Faça login novamente.' };
+    // Limpar qualquer indicador anterior de sucesso
+    localStorage.removeItem('instagram_oauth_success');
+    
+    // Chamar a API para obter a URL de autenticação OAuth
+    const response = await InstagramAPI.getInstagramAuthUrl();
+    
+    console.log('Resposta da API:', response.data);
+    
+    if (response.status !== 200 || !response.data.auth_url) {
+      console.error('Erro ao obter URL de autenticação:', response.data);
+      localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+      return { 
+        success: false, 
+        error: response.data.message || 'Erro ao iniciar autenticação com Instagram' 
+      };
     }
     
-    // Definir URL de redirecionamento
-    const redirectUri = window.location.origin + '/instagram/oauth/callback';
-    console.log('URL de redirecionamento:', redirectUri);
+    // Usar a URL OAuth exatamente como retornada pelo backend
+    const authUrl = response.data.auth_url;
+    console.log('URL de autenticação obtida:', authUrl);
     
-    // Chamar a API para obter a URL de autenticação
-    try {
-      console.log('Enviando requisição para obter URL de autenticação com token JWT');
-      
-      // Configurar o token nos headers globais
-      API.defaults.headers.common['Authorization'] = `Bearer ${jwtToken}`;
-      API.defaults.headers.common['jwt-token'] = jwtToken;
-      
-      const response = await InstagramAPI.connectInstagramOAuth(redirectUri);
-      
-      console.log('Resposta da API:', response.status, response.data);
-      
-      if (response.status !== 200 || !response.data.auth_url) {
-        console.error('Erro ao obter URL de autenticação:', response.data);
-        return { success: false, error: response.data.message || 'Erro ao iniciar autenticação com Instagram' };
-      }
-      
-      const authUrl = response.data.auth_url;
-      console.log('URL de autenticação obtida:', authUrl.substring(0, 50) + '...');
-      
-      // Abrir janela de autenticação do Instagram
-      const authWindow = window.open(authUrl, 'instagram-oauth', 'width=600,height=700');
-      
-      if (!authWindow) {
-        return { success: false, error: 'Não foi possível abrir a janela de autenticação. Verifique se o bloqueador de pop-ups está desativado.' };
-      }
-      
-      console.log('Janela de autenticação aberta, aguardando conclusão...');
-      
-      // Criar Promise para aguardar o retorno da autenticação
-      return new Promise((resolve) => {
-        // Função para capturar e tratar erros específicos do Facebook/Instagram
-        const handleFacebookError = (errorWindow: Window, errorData: any) => {
-          try {
-            console.error('Erro Facebook OAuth:', errorData);
-            
-            // Verificar se é o erro 101 (erro de validação da aplicação)
-            if (errorData?.error?.code === 101) {
-              errorWindow.close();
-              resolve({ 
-                success: false, 
-                error: `Erro de configuração da aplicação no Facebook Developers Portal (Código: 101). 
-                \n\nPara resolver este problema:
-                \n1. Verifique se o App ID e App Secret estão corretos no backend
-                \n2. Confirme se a aplicação está corretamente configurada para Instagram Basic Display API
-                \n3. Verifique se o redirect_uri (${redirectUri}) está configurado como URL válida de redirecionamento
-                \n4. Se sua aplicação estiver em modo de desenvolvimento, adicione os usuários de teste necessários
-                \n5. Certifique-se de que a aplicação está ativa e não em processo de revisão` 
-              });
-              return true;
-            }
-            
-            // Outros erros conhecidos podem ser tratados aqui
-            
-            return false;
-          } catch (e) {
-            console.error('Erro ao processar erro do Facebook:', e);
-            return false;
-          }
-        };
+    // Set up a window message listener before opening the popup
+    const messagePromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const messageHandler = (event: MessageEvent) => {
+        // Verify origin for security
+        if (event.origin !== window.location.origin) return;
         
-        // Função para verificar se a autenticação foi concluída
-        const checkAuth = async () => {
-          try {
-            // Verificar se a janela foi fechada
-            if (authWindow.closed) {
-              console.log('Janela de autenticação foi fechada pelo usuário');
-              
-              // Tentar verificar se temos credenciais mesmo assim
-              try {
-                const checkResponse = await InstagramAPI.checkInstagramCredentials();
-                if (checkResponse.data?.has_credentials) {
-                  console.log('Autenticação concluída com sucesso após fechamento da janela!');
-                  resolve({ success: true });
-                  return;
-                }
-              } catch {}
-              
-              resolve({ success: false, error: 'Autenticação cancelada pelo usuário' });
-              return;
-            }
-            
-            // Tentar capturar erros na URL ou no conteúdo da página
+        if (event.data?.type === 'INSTAGRAM_AUTH_SUCCESS') {
+          console.log('Received success message from popup');
+          window.removeEventListener('message', messageHandler);
+          localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+          resolve({ success: true });
+        } else if (event.data?.type === 'INSTAGRAM_AUTH_ERROR') {
+          console.log('Received error message from popup:', event.data.error);
+          window.removeEventListener('message', messageHandler);
+          localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+          resolve({ success: false, error: event.data.error });
+        }
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Clean up if window closed without sending a message
+      setTimeout(() => {
+        window.removeEventListener('message', messageHandler);
+        localStorage.removeItem('instagram_auth_in_progress'); // Clear flag after timeout
+      }, 180000); // 3 minutes timeout
+    });
+    
+    // Abrir janela de autenticação
+    const authWindow = window.open(authUrl, 'instagram-oauth', 'width=600,height=700');
+    
+    if (!authWindow) {
+      localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+      return { 
+        success: false, 
+        error: 'Não foi possível abrir a janela de autenticação. Verifique se o bloqueador de pop-ups está desativado.' 
+      };
+    }
+    
+    console.log('Janela de autenticação aberta, aguardando conclusão...');
+    
+    // Race between messagePromise and window close check
+    const checkWindowClosedPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (authWindow.closed) {
+          clearInterval(checkInterval);
+          
+          // Check if we have a successful connection after window close
+          setTimeout(async () => {
             try {
-              const currentUrl = authWindow.location.href;
-              
-              // Se retornou para nossa URL de callback, verificar se a autenticação foi bem-sucedida
-              if (currentUrl.startsWith(redirectUri) || currentUrl.includes('callback')) {
-                console.log('Redirecionado para callback, verificando credenciais...');
-                
-                // Esperar um pouco para o backend processar
-                setTimeout(async () => {
-                  try {
-                    const checkResponse = await InstagramAPI.checkInstagramCredentials();
-                    if (checkResponse.data?.has_credentials) {
-                      console.log('Autenticação concluída com sucesso!');
-                      authWindow.close();
-                      resolve({ success: true });
-                      return;
-                    } else {
-                      // Se chegou no callback mas não temos credenciais, pode ter ocorrido um erro
-                      const pageContent = authWindow.document.body.innerText;
-                      
-                      // Tentar encontrar mensagens de erro no conteúdo da página
-                      try {
-                        if (pageContent.includes('error') || pageContent.includes('Error')) {
-                          const errorData = JSON.parse(pageContent);
-                          if (handleFacebookError(authWindow, errorData)) {
-                            return;
-                          }
-                        }
-                      } catch {}
-                      
-                      // Se ainda estamos aqui, continuar verificando
-                      setTimeout(checkAuth, 2000);
-                    }
-                  } catch (error) {
-                    console.error('Erro ao verificar credenciais após callback:', error);
-                    setTimeout(checkAuth, 2000);
-                  }
-                }, 3000);
-                return;
+              const checkResponse = await InstagramAPI.checkInstagramCredentials();
+              if (checkResponse.data?.has_credentials) {
+                console.log('Credenciais verificadas com sucesso após fechamento da janela');
+                localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+                resolve({ success: true });
+              } else {
+                console.error('Não foi possível verificar credenciais após fechamento da janela');
+                localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+                resolve({ success: false, error: 'A janela foi fechada sem completar a autenticação' });
               }
-              
-              // Tentar capturar erros diretos da página
-              try {
-                const pageContent = authWindow.document.body.innerText;
-                if (pageContent.includes('error') && pageContent.includes('code')) {
-                  try {
-                    const errorData = JSON.parse(pageContent);
-                    if (handleFacebookError(authWindow, errorData)) {
-                      return;
-                    }
-                  } catch {}
-                }
-              } catch {}
-            } catch {}
-            
-            // Verificar credenciais normalmente
-            console.log('Verificando se a autenticação foi concluída...');
-            const checkResponse = await InstagramAPI.checkInstagramCredentials();
-            
-            console.log('Resposta da verificação:', checkResponse.data);
-            
-            if (checkResponse.data?.has_credentials) {
-              console.log('Autenticação concluída com sucesso!');
-              authWindow.close();
-              resolve({ success: true });
-              return;
+            } catch (error) {
+              console.error('Erro ao verificar credenciais:', error);
+              localStorage.removeItem('instagram_auth_in_progress'); // Clear flag
+              resolve({ success: false, error: 'Erro ao verificar credenciais após fechamento da janela' });
             }
-            
-            // Continuar verificando a cada 2 segundos
-            setTimeout(checkAuth, 2000);
-          } catch (error) {
-            console.error('Erro ao verificar autenticação:', error);
-            setTimeout(checkAuth, 2000);
-          }
-        };
-        
-        // Iniciar verificação após 2 segundos
-        setTimeout(checkAuth, 2000);
-      });
+          }, 2000); // Small delay to allow API state to update
+        }
+      }, 500);
+      
+      // Clean up interval after 3 minutes
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        localStorage.removeItem('instagram_auth_in_progress'); // Clear flag after timeout
+      }, 180000);
+    });
+    
+    try {
+      // Wait for either the message or window close
+      const result = await Promise.race([messagePromise, checkWindowClosedPromise]);
+      return result;
     } catch (error) {
-      console.error('Erro ao conectar ao Instagram:', error);
-      
-      // Verificar se o erro é do Facebook OAuth
-      const fbError = error?.response?.data?.error;
-      if (fbError?.code === 101) {
-        return { 
-          success: false, 
-          error: `Erro de configuração da aplicação no Facebook (Código: 101). Verifique o App ID, App Secret e configurações de redirecionamento.` 
-        };
-      }
-      
-      return { success: false, error: 'Falha ao iniciar autenticação com Instagram' };
+      console.error('Erro durante autenticação:', error);
+      localStorage.removeItem('instagram_auth_in_progress'); // Clear flag on error
+      return { success: false, error: 'Erro durante processo de autenticação' };
     }
+    
   } catch (error) {
     console.error('Erro no processo de autenticação OAuth:', error);
+    localStorage.removeItem('instagram_auth_in_progress'); // Clear flag on error
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Erro inesperado durante autenticação com Instagram',

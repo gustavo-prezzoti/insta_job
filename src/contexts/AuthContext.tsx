@@ -38,6 +38,7 @@ interface AuthContextProps {
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   checkAuth: () => Promise<void>;
   getUser: () => Promise<User | null>;
+  checkInstagramConnection: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -273,6 +274,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return response.data;
   };
 
+  const checkInstagramConnection = async (): Promise<boolean> => {
+    try {
+      console.log('Verificando status da conexão com Instagram');
+      
+      // First check local storage for quick response
+      const localStorageConnected = localStorage.getItem('instagram_connected') === 'true';
+      console.log('Status da conexão no localStorage:', localStorageConnected);
+      
+      // Then verify with the API
+      console.log('Fazendo chamada à API para verificar status de autenticação');
+      const response = await UserAPI.getMe(localStorage.getItem('token') || '');
+      
+      if (response.status === 200) {
+        console.log('Resposta da API recebida:', response.status);
+        
+        // Check if the user has Instagram sessions
+        const apiConnected = response.data.sessions?.length > 0;
+        console.log('Sessões do Instagram na resposta API:', response.data.sessions?.length || 0);
+        
+        // Update the state and localStorage
+        setIsInstagramConnected(!!apiConnected);
+        localStorage.setItem('instagram_connected', apiConnected ? 'true' : 'false');
+        
+        console.log('Status da conexão atualizado:', apiConnected);
+        return !!apiConnected;
+      } else {
+        console.warn('API retornou status diferente de 200:', response.status);
+      }
+      
+      // If API call fails or returns non-200, return the local storage value
+      console.log('Usando valor do localStorage como fallback:', localStorageConnected);
+      return localStorageConnected;
+    } catch (error) {
+      console.error('Erro ao verificar conexão com Instagram:', error);
+      
+      // If there's an error, check localStorage as fallback
+      const fallbackValue = localStorage.getItem('instagram_connected') === 'true';
+      console.log('Usando valor de fallback do localStorage após erro:', fallbackValue);
+      
+      // Keep current state if localStorage is empty
+      return fallbackValue || isInstagramConnected;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -289,6 +334,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatePassword,
         checkAuth,
         getUser,
+        checkInstagramConnection,
       }}
     >
       {children}

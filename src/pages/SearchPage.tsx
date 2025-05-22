@@ -10,20 +10,97 @@ import SearchResults from '@/components/search/SearchResults';
 import InstagramLoginModal from '@/components/search/InstagramLoginModal';
 import SourceTabs from '@/components/search/SourceTabs';
 
+// Function to check and clear stale authentication flags
+const clearStaleAuthFlags = (): void => {
+  const authInProgress = localStorage.getItem('instagram_auth_in_progress');
+  const authTimestamp = localStorage.getItem('instagram_auth_timestamp');
+  
+  if (authInProgress) {
+    // If timestamp exists, check if stale
+    if (authTimestamp) {
+      const now = Date.now();
+      const timestamp = parseInt(authTimestamp, 10);
+      
+      // Flag is stale if older than 2 minutes or invalid
+      if (isNaN(timestamp) || now - timestamp > 2 * 60 * 1000) {
+        console.log('SearchPage: Clearing stale authentication flag (timestamp check)');
+        localStorage.removeItem('instagram_auth_in_progress');
+        localStorage.removeItem('instagram_auth_timestamp');
+      }
+    } else {
+      // No timestamp, so flag is stale
+      console.log('SearchPage: Clearing stale authentication flag (no timestamp)');
+      localStorage.removeItem('instagram_auth_in_progress');
+    }
+  }
+};
+
 const SearchPage = () => {
   const { searchResults, searchTerm, setSearchTerm, selectedVideos, toggleVideoSelection, searchVideos, isSearching } = useVideo();
   const [showInstagramModal, setShowInstagramModal] = useState(false);
+  const [recentlyAuthenticated, setRecentlyAuthenticated] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { isInstagramConnected, loginWithInstagram, user } = useAuth();
+  const { isInstagramConnected, loginWithInstagram, checkInstagramConnection, user } = useAuth();
   const { addToSearchHistory } = useDatabase();
 
   const currentSelectedVideos = selectedVideos.filter(selectedVideo => 
     searchResults.some(searchResult => searchResult.id === selectedVideo.id)
   );
 
+  // Listen for messages from OAuth popup
   useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Verify origin to prevent XSS attacks
+      if (event.origin !== window.location.origin) return;
+      
+      // Check if this is our OAuth success message
+      if (event.data?.type === 'INSTAGRAM_AUTH_SUCCESS') {
+        console.log('Received authentication success message in SearchPage');
+        
+        // Clear any authentication in progress flag
+        localStorage.removeItem('instagram_auth_in_progress');
+        localStorage.removeItem('instagram_auth_timestamp');
+        
+        // Update local connection state
+        localStorage.setItem('instagram_connected', 'true');
+        
+        // Set flag to prevent modal reopening
+        setRecentlyAuthenticated(true);
+        
+        // Check Instagram connection status without page refresh
+        await checkInstagramConnection();
+        
+        // If we have videos selected, go directly to post config after authentication
+        if (currentSelectedVideos.length > 0) {
+          // Store videos again to be sure
+          localStorage.setItem('selectedVideos', JSON.stringify(currentSelectedVideos));
+          localStorage.setItem('currentSelectedVideo', JSON.stringify(currentSelectedVideos[0]));
+          
+          // Navigate after a brief delay to ensure state updates
+          setTimeout(() => {
+            navigate('/post-config');
+          }, 300);
+        }
+      } else if (event.data?.type === 'INSTAGRAM_AUTH_ERROR') {
+        // Clear any authentication in progress flag on error
+        localStorage.removeItem('instagram_auth_in_progress');
+        localStorage.removeItem('instagram_auth_timestamp');
+      }
+    };
+    
+    // Add the message event listener
+    window.addEventListener('message', handleMessage);
+    
+    // Clean up
+    return () => window.removeEventListener('message', handleMessage);
+  }, [checkInstagramConnection, currentSelectedVideos, navigate]);
+
+  useEffect(() => {
+    // Clear any stale auth flags when component mounts
+    clearStaleAuthFlags();
+    
     if (searchInputRef.current) {
       searchInputRef.current.focus();
     }
@@ -31,6 +108,32 @@ const SearchPage = () => {
     if (searchTerm.trim()) {
       handleSearch(new Event('submit') as unknown as React.FormEvent<HTMLFormElement>);
     }
+
+    // Check Instagram connection status when the page loads
+    const checkConnection = async () => {
+      // Clear any stale authentication flags on page load
+      if (document.visibilityState === 'visible') {
+        clearStaleAuthFlags();
+      }
+      
+      await checkInstagramConnection();
+    };
+    
+    checkConnection();
+    
+    // Set up visibility change listener to check connection when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        clearStaleAuthFlags();
+        checkInstagramConnection();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleSearch = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -62,7 +165,7 @@ const SearchPage = () => {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (currentSelectedVideos.length === 0) {
       toast({
         title: "Nenhum vídeo selecionado",
@@ -85,7 +188,18 @@ const SearchPage = () => {
     
     console.log("Vídeos salvos no localStorage antes de navegar para post-config:", currentSelectedVideos.length);
     
-    if (!isInstagramConnected) {
+    // If we recently authenticated successfully, skip the connection check
+    if (recentlyAuthenticated) {
+      setTimeout(() => {
+        navigate('/post-config');
+      }, 300);
+      return;
+    }
+    
+    // Check the current Instagram connection status before proceeding
+    const isConnected = await checkInstagramConnection();
+    
+    if (!isConnected) {
       setShowInstagramModal(true);
       return;
     }
@@ -104,6 +218,7 @@ const SearchPage = () => {
     });
     
     setShowInstagramModal(false);
+    setRecentlyAuthenticated(true);
     
     // Garantir que o vídeo selecionado é salvo mesmo após o login do Instagram
     if (currentSelectedVideos.length > 0) {
@@ -146,8 +261,14 @@ const SearchPage = () => {
         />
         
         <InstagramLoginModal 
-          open={showInstagramModal}
-          onOpenChange={setShowInstagramModal}
+          open={showInstagramModal && !recentlyAuthenticated}
+          onOpenChange={(open) => {
+            // Don't reopen the modal if we recently authenticated successfully
+            if (open && recentlyAuthenticated) {
+              return;
+            }
+            setShowInstagramModal(open);
+          }}
           onLogin={handleInstagramLogin}
         />
       </div>

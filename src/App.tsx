@@ -16,6 +16,7 @@ import SchedulePage from './pages/SchedulePage';
 import SearchPage from './pages/SearchPage';
 import SuccessPage from './pages/SuccessPage';
 import UpdatePasswordPage from './pages/UpdatePasswordPage';
+import InstagramOAuthCallback from './pages/InstagramOAuthCallback';
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
               <Route path="/search" element={<SearchPage />} />
               <Route path="/post-config" element={<PostConfigPage />} />
               <Route path="/success" element={<SuccessPage />} />
+              <Route path="/instagram/oauth/callback" element={<InstagramOAuthCallback />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>

@@ -171,8 +171,8 @@ const PostActions = ({
         const { hasCredentials, username, usernames } = await checkInstagramCredentials();
         
         if (hasCredentials && username) {
-          setInstagramUsername(username);
-          setInstagramUsernames(usernames || []);
+        setInstagramUsername(username);
+        setInstagramUsernames(usernames || []);
         }
 
         setShowLoginModal(false);
