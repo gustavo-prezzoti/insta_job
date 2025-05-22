@@ -82,7 +82,15 @@ const completeOAuthFlow = (tempCode: string) => {
     'Accept': 'application/json'
   };
   
-  return API.post('/instagram/oauth/complete', { temp_code: tempCode }, { headers })
+  // Em desenvolvimento, verifica se estamos usando proxy local ou URL direta
+  const isDev = import.meta.env.DEV;
+  const endpoint = isDev 
+    ? '/instagram/oauth/complete' 
+    : '/instagram/oauth/complete';
+  
+  console.log(`Enviando requisição para ${endpoint} com código temporário`);
+  
+  return API.post(endpoint, { temp_code: tempCode }, { headers })
     .then(response => {
       // Verificar se a resposta parece ser HTML
       if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
@@ -95,12 +103,34 @@ const completeOAuthFlow = (tempCode: string) => {
           }
         };
       }
+      console.log('Resposta completeOAuthFlow:', response.status, response.data);
       return response;
     })
     .catch(error => {
       console.error('Erro no fluxo OAuth:', error);
+      
+      // Se for erro 405 Method Not Allowed, tentar com GET como fallback
+      if (error.response && error.response.status === 405) {
+        console.log('Erro 405, tentando método GET como fallback');
+        return API.get(`${endpoint}?temp_code=${encodeURIComponent(tempCode)}`, { headers })
+          .then(response => {
+            console.log('Resposta do fallback GET:', response.status);
+            return response;
+          })
+          .catch(fallbackError => {
+            console.error('Erro também no fallback GET:', fallbackError);
+            return {
+              status: 400,
+              data: {
+                success: false,
+                error: 'Método não permitido para este endpoint'
+              }
+            };
+          });
+      }
+      
       return {
-        status: 400,
+        status: error.response?.status || 400,
         data: {
           success: false,
           error: error.message || 'Erro no fluxo OAuth'

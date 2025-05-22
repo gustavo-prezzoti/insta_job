@@ -7,7 +7,7 @@ const isDev = import.meta.env.DEV;
 // sejam feitas diretamente na raiz, e o proxy do Vite intercepta
 export const API_URL = isDev 
   ? '' // Em desenvolvimento, URL vazia para requisições diretas na raiz
-  : 'https://insta-job-igff.vercel.app'; // Em produção, usamos a URL completa
+  : 'https://systemsrvdsv.cloud'; // Em produção, usamos a URL completa do backend
 
 console.log('Ambiente:', isDev ? 'desenvolvimento' : 'produção');
 console.log('API URL configurada como:', API_URL || '(URL raiz)');
@@ -16,11 +16,61 @@ export const API = Axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
+  // Impedir a transformação da resposta se for HTML
+  transformResponse: [(data) => {
+    // Verificar se a resposta parece ser HTML
+    if (typeof data === 'string' && data.includes('<!DOCTYPE html>')) {
+      console.error('Recebeu HTML em vez de JSON, abortando transformação');
+      return { error: 'Resposta HTML inesperada', isHtmlResponse: true };
+    }
+    // Tentar fazer parse do JSON
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      // Se não for JSON, retornar os dados brutos
+      return data;
+    }
+  }]
 });
 
 // Log para debug
 console.log('API configurada para baseURL:', API_URL || '(URL raiz)');
+
+// Adiciona logs para todas as requisições em desenvolvimento
+if (import.meta.env.DEV) {
+  API.interceptors.request.use(
+    (config) => {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config);
+      return config;
+    },
+    (error) => {
+      console.error('[API Request Error]', error);
+      return Promise.reject(error);
+    }
+  );
+
+  API.interceptors.response.use(
+    (response) => {
+      // Verificar se a resposta parece ser HTML
+      if (response.data && response.data.isHtmlResponse) {
+        console.error('[API Response HTML Error]', response.config.url);
+        // Criar um erro simulado com o status 500
+        const error = new Error('Received HTML instead of JSON');
+        throw error;
+      }
+      
+      console.log(`[API Response] ${response.status} ${response.config.url}`, 
+        typeof response.data === 'object' ? response.data : 'Non-object response');
+      return response;
+    },
+    (error) => {
+      console.error('[API Response Error]', error.response?.status, error.config?.url, error);
+      return Promise.reject(error);
+    }
+  );
+}
 
 export const setToken = (token: string) => {
   if (token && typeof token === 'string') {
