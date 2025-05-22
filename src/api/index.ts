@@ -1,7 +1,7 @@
 import Axios from 'axios';
 
 //export const API_URL = 'https://api.viralyx.ai';
-export const API_URL = 'http://localhost:8000';
+export const API_URL = 'https://9db0-177-84-243-111.ngrok-free.app';
 
 export const API = Axios.create({
   baseURL: `${API_URL}`,
