@@ -18,8 +18,8 @@ interface PostFormProps {
   setCaption: (caption: string) => void;
   hashtags: string;
   setHashtags: (hashtags: string) => void;
-  postType: 'reel' | 'feed' | 'story';
-  setPostType: (postType: 'reel' | 'feed' | 'story') => void;
+  postType: 'reel' | 'story';
+  setPostType: (postType: 'reel' | 'story') => void;
   isScheduled: boolean;
   setIsScheduled: (isScheduled: boolean) => void;
   scheduledDate: Date | undefined;
@@ -42,97 +42,80 @@ const PostForm = ({
   scheduledTime,
   setScheduledTime,
 }: PostFormProps) => {
-  // Estado para controlar a data de expiração da assinatura
-  const [subscriptionEndDate, setSubscriptionEndDate] = useState<Date | null>(null);
+  const [timeOptions, setTimeOptions] = useState<string[]>([]);
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(true);
+  const [subscriptionEndDate, setSubscriptionEndDate] = useState<Date | null>(null);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
-
+  const [maxSelectableDate, setMaxSelectableDate] = useState<Date>(new Date());
   const { getUser } = useAuth();
 
-  // Gerar opções de tempo em intervalos de 10 minutos
+  // Gerar opções de horário a cada 30 minutos
   const generateTimeOptions = () => {
-    const times = [];
+    const options: string[] = [];
     for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += 10) {
+      for (let minute = 0; minute < 60; minute += 30) {
         const formattedHour = hour.toString().padStart(2, '0');
         const formattedMinute = minute.toString().padStart(2, '0');
-        times.push(`${formattedHour}:${formattedMinute}`);
+        options.push(`${formattedHour}:${formattedMinute}`);
       }
     }
-    return times;
+    setTimeOptions(options);
   };
 
-  const timeOptions = generateTimeOptions();
+  useEffect(() => {
+    generateTimeOptions();
+  }, []);
 
-  // Verificar data de expiração da assinatura ao carregar o componente
+  // Carregar informações de assinatura para validar datas de agendamento
   useEffect(() => {
     const fetchSubscriptionData = async () => {
+      setIsLoadingSubscription(true);
+      setSubscriptionError(null);
+
       try {
-        setIsLoadingSubscription(true);
-
         const user = await getUser();
-
         if (!user) {
-          setSubscriptionError('Usuário não autenticado');
-          return false;
-        }
-
-        if (!user.is_active) {
-          setSubscriptionError('Usuário não ativo');
-          return false;
-        }
-
-        if (!user.has_subscription) {
-          setSubscriptionError('Usuário não tem assinatura ativa');
-          return false;
+          setSubscriptionError('Não foi possível verificar sua assinatura');
+          setIsLoadingSubscription(false);
+          return;
         }
 
         if (user.subscription_end_date) {
-          setSubscriptionEndDate(new Date(user.subscription_end_date));
-          return false;
-        }
+          const endDate = new Date(user.subscription_end_date);
+          setSubscriptionEndDate(endDate);
 
-        const defaultEndDate = addDays(new Date(), 30);
-        setSubscriptionEndDate(defaultEndDate);
-        return true;
+          // Definir data máxima selecionável com base na data de expiração da assinatura
+          setMaxSelectableDate(endDate);
+        } else {
+          // Se não houver uma data de expiração definida, limite para 30 dias no futuro (caso de teste)
+          const defaultEndDate = new Date();
+          defaultEndDate.setDate(defaultEndDate.getDate() + 30);
+          setSubscriptionEndDate(defaultEndDate);
+          setMaxSelectableDate(defaultEndDate);
+        }
       } catch (error) {
-        console.error('Erro ao verificar assinatura:', error);
-        setSubscriptionError('Falha ao verificar status da assinatura');
-        return false;
+        console.error('Erro ao carregar dados de assinatura:', error);
+        setSubscriptionError('Não foi possível verificar sua assinatura');
       } finally {
         setIsLoadingSubscription(false);
       }
     };
 
     fetchSubscriptionData();
-  }, []);
+  }, [getUser]);
 
-  // Verificar se a data selecionada está dentro do período de assinatura
+  // Verificar se a data está dentro do período de assinatura
   const isDateWithinSubscription = (date?: Date): boolean => {
     if (!date || !subscriptionEndDate) return false;
-    return !isAfter(date, subscriptionEndDate);
+    return date <= subscriptionEndDate;
   };
 
-  // Limitar datas selecionáveis no calendário
+  // Verificar se a data pode ser selecionada (a partir de hoje até o fim da assinatura)
   const isDateSelectable = (date: Date): boolean => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    // Não permitir datas no passado
-    if (isBefore(date, today)) return false;
-
-    // Se tivermos uma data de expiração da assinatura, não permitir datas após ela
-    if (subscriptionEndDate) {
-      const endDate = new Date(subscriptionEndDate);
-      endDate.setHours(23, 59, 59, 999);
-      return !isAfter(date, endDate);
-    }
-
-    return true;
+    return date >= today && isDateWithinSubscription(date);
   };
-
-  // Limitar a data máxima selecionável no calendário
-  const maxSelectableDate = subscriptionEndDate || undefined;
 
   return (
     <div className="space-y-6">
@@ -146,19 +129,13 @@ const PostForm = ({
         </label>
         <RadioGroup
           value={postType}
-          onValueChange={(value) => setPostType(value as 'reel' | 'feed' | 'story')}
+          onValueChange={(value) => setPostType(value as 'reel' | 'story')}
           className="flex flex-wrap gap-4"
         >
           <div className="flex items-center space-x-2 bg-white/5 px-4 py-3 rounded-lg border border-white/10 hover:border-viral-accent-purple/50 transition-all">
             <RadioGroupItem value="reel" id="reel" className="border-white/30 text-viral-accent-purple" />
             <Label htmlFor="reel" className="text-white cursor-pointer">
               Reels
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2 bg-white/5 px-4 py-3 rounded-lg border border-white/10 hover:border-viral-accent-purple/50 transition-all">
-            <RadioGroupItem value="feed" id="feed" className="border-white/30 text-viral-accent-purple" />
-            <Label htmlFor="feed" className="text-white cursor-pointer">
-              Feed
             </Label>
           </div>
           <div className="flex items-center space-x-2 bg-white/5 px-4 py-3 rounded-lg border border-white/10 hover:border-viral-accent-purple/50 transition-all">

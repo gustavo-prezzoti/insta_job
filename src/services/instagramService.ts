@@ -513,7 +513,7 @@ export const checkInstagramCredentials = async (): Promise<{
 export const postToInstagram = async (
   videoUrl: string,
   caption: string,
-  postType: 'reel' | 'feed' | 'story',
+  postType: 'reel' | 'story',
 ): Promise<{ success: boolean; postId?: string; error?: string }> => {
   try {
     // Verificando se temos credenciais do Instagram
@@ -587,7 +587,7 @@ export const publishToInstagramWithOAuth = async (
   videoUrl: string,
   caption: string,
   hashtags: string,
-  postType: 'reel' | 'feed' | 'story',
+  postType: 'reel' | 'story',
   when: 'now' | 'schedule' = 'now',
   scheduledDate?: Date
 ): Promise<{ success: boolean; postId?: string; error?: string }> => {

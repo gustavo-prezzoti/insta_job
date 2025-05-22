@@ -11,7 +11,7 @@ export const usePostSubmission = (
   selectedVideo: VideoResult | null,
   caption: string,
   hashtags: string,
-  postType: 'reel' | 'feed' | 'story',
+  postType: 'reel' | 'story',
   isScheduled: boolean,
   scheduledDate: Date | undefined,
   scheduledTime: string,
@@ -175,7 +175,7 @@ export const usePostSubmission = (
       toast({
         title: 'Vídeo publicado!',
         description: `Seu vídeo foi postado no Instagram ${
-          postType === 'feed' ? 'Feed' : postType === 'story' ? 'Story' : 'Reels'
+          postType === 'story' ? 'Story' : 'Reels'
         }.`,
         variant: 'success',
       });
@@ -204,5 +204,8 @@ export const usePostSubmission = (
     }
   };
 
-  return { isPosting, handleSubmit };
+  return {
+    isPosting,
+    handleSubmit,
+  };
 };

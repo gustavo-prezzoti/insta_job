@@ -150,7 +150,7 @@ const publishToInstagram = ({
   hashtags,
 }: {
   username: string;
-  type: 'feed' | 'reel' | 'story';
+  type: 'reel' | 'story';
   when: 'now' | 'schedule';
   schedule_date?: string;
   video_url: string;
@@ -253,7 +253,7 @@ const postToInstagram = ({
   hashtags,
 }: {
   username: string;
-  type: 'feed' | 'reel' | 'story';
+  type: 'reel' | 'story';
   when: 'now' | 'schedule';
   schedule_date?: string;
   video_url: string;
