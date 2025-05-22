@@ -1,7 +1,7 @@
 import Axios from 'axios';
 
 //export const API_URL = 'https://api.viralyx.ai';
-export const API_URL = 'http://18.230.214.228';
+export const API_URL = 'https://systemsrvdsv.cloud';
 
 export const API = Axios.create({
   baseURL: `${API_URL}`,
