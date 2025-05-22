@@ -3,7 +3,12 @@ import InstagramLoginModal from '@/components/search/InstagramLoginModal';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { checkInstagramCredentials, loginToInstagram, logoutFromInstagram, loginWithInstagramOAuth } from '@/services/instagramService';
+import { 
+  checkInstagramCredentials, 
+  loginWithInstagramOAuth, 
+  logoutFromInstagram,
+  revokeInstagramOAuth
+} from '@/services/instagramService';
 import { Calendar, Instagram, Loader2, LogOutIcon, PlusCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -85,39 +90,61 @@ const PostActions = ({
     try {
       setIsDisconnecting(true);
 
-      // Chamar o endpoint de desconexão usando a API do Instagram
-      await InstagramAPI.disconnectInstagram({ username });
-      console.log(`Conta ${username} desconectada com sucesso via API`);
-
-      // Continuar com o processo local de logout
-      await logoutFromInstagram();
+      // Usar o novo endpoint de revogação OAuth
+      const result = await revokeInstagramOAuth(username);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao desconectar Instagram');
+      }
+      
+      // Exibir as contas que foram revogadas
+      const revokedAccounts = result.revokedAccounts || [];
+      console.log(`Conta(s) ${revokedAccounts.join(', ')} desconectada(s) com sucesso via OAuth`);
 
       // Atualizar o estado local
       setHasCredentials(false);
       setInstagramUsername(null);
-
-      // Atualizar a lista de usernames
-      const { usernames } = await checkInstagramCredentials();
-      setInstagramUsernames(usernames || []);
-
-      // Se ainda existirem contas, atualizar para a primeira conta disponível
-      if (usernames && usernames.length > 0) {
-        setInstagramUsername(usernames[0]);
-        setHasCredentials(true);
-      }
+      setInstagramUsernames([]);
 
       toast({
         title: 'Conta removida',
-        description: 'Sua conta do Instagram foi desconectada.',
+        description: `Sua conta do Instagram ${username} foi desconectada.`,
         variant: 'success',
       });
     } catch (error) {
       console.error('Erro ao desconectar conta do Instagram:', error);
-      toast({
-        title: 'Erro ao desconectar',
-        description: 'Não foi possível desconectar sua conta do Instagram.',
-        variant: 'destructive',
-      });
+      
+      // Tentar o método antigo como fallback
+      try {
+        console.log('Tentando método antigo de desconexão como fallback');
+        
+        // Chamar o endpoint de desconexão usando a API do Instagram (método antigo)
+        await InstagramAPI.disconnectInstagram({ username });
+        
+        // Continuar com o processo local de logout
+        await logoutFromInstagram();
+        
+        // Atualizar o estado local
+        setHasCredentials(false);
+        setInstagramUsername(null);
+        setInstagramUsernames([]);
+        
+        console.log('Método antigo de desconexão bem-sucedido');
+        
+        toast({
+          title: 'Conta removida',
+          description: 'Sua conta do Instagram foi desconectada (usando método alternativo).',
+          variant: 'success',
+        });
+      } catch (fallbackError) {
+        console.error('Erro também no método antigo de desconexão:', fallbackError);
+        
+        toast({
+          title: 'Erro ao desconectar',
+          description: 'Não foi possível desconectar sua conta do Instagram.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsDisconnecting(false);
     }
@@ -215,16 +242,16 @@ const PostActions = ({
   return (
     <>
       {hasCredentials && (
-        <div className="mb-4 flex flex-col md:flex-row items-start md:items-center justify-between bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10 shadow-lg">
-          <div className="flex items-center w-full md:w-auto">
-            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mr-3">
+        <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between bg-white/5 backdrop-blur-sm rounded-xl p-5 border border-white/10 shadow-lg">
+          <div className="flex items-center w-full md:w-auto mb-3 md:mb-0">
+            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mr-4">
               <Instagram className="h-5 w-5 text-white" />
             </div>
-            <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-              <span className="text-sm text-white/80">Conectado como</span>
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+              <span className="text-sm font-medium text-white/80">Conectado como</span>
               <Select value={instagramUsername || ''} onValueChange={handleChangeAccount}>
                 <SelectTrigger
-                  className="w-full md:w-[180px] h-9 text-sm bg-gradient-to-r from-purple-500/10 to-pink-500/10
+                  className="w-full md:w-[200px] h-9 text-sm bg-gradient-to-r from-purple-500/10 to-pink-500/10
                   border border-white/20 rounded-md hover:border-pink-400/50 transition-all duration-200
                   focus:ring-pink-400/30 focus:border-pink-400/50 focus:ring-2 focus:ring-offset-0"
                 >
@@ -236,7 +263,7 @@ const PostActions = ({
                       <SelectItem
                         key={username}
                         value={username}
-                        className="flex items-center text-sm rounded-sm transition-colors hover:bg-pink-500/20 focus:bg-pink-500/20 focus:text-white"
+                        className="flex items-center text-sm rounded-sm transition-colors hover:bg-pink-500/20 focus:bg-pink-500/20 focus:text-white p-2"
                       >
                         <div className="flex items-center">
                           <Instagram className="h-3.5 w-3.5 mr-2 text-pink-400" />
@@ -275,65 +302,69 @@ const PostActions = ({
             </div>
           </div>
 
-          {!instagramUsernames.length && (
+          <div className="flex items-center space-x-3">
+            {!instagramUsernames.length && (
+              <Button
+                onClick={handleSwitchAccount}
+                variant="ghost"
+                size="sm"
+                className="text-xs flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-md"
+              >
+                <PlusCircle className="h-3.5 w-3.5" />
+                Adicionar conta
+              </Button>
+            )}
+
             <Button
-              onClick={handleSwitchAccount}
+              onClick={() => instagramUsername && disconnectInstagramAccount(instagramUsername)}
               variant="ghost"
               size="sm"
-              className="text-xs flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/20"
+              disabled={isDisconnecting}
+              className="text-xs flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-white/20 rounded-md"
             >
-              <PlusCircle className="h-3 w-3" />
-              Adicionar conta
+              {isDisconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOutIcon className="h-3.5 w-3.5" />}
+              {isDisconnecting ? 'Desconectando...' : 'Desconectar conta'}
             </Button>
-          )}
-
-          <Button
-            onClick={() => instagramUsername && disconnectInstagramAccount(instagramUsername)}
-            variant="ghost"
-            size="sm"
-            disabled={isDisconnecting}
-            className="text-xs flex items-center gap-1 bg-red-500/10 hover:bg-white/20 border border-white/20"
-          >
-            {isDisconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <LogOutIcon className="h-3 w-3" />}
-            {isDisconnecting ? 'Desconectando...' : 'Desconectar conta'}
-          </Button>
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleFormSubmit}>
+      <form onSubmit={handleFormSubmit} className="mt-4">
         <Button
           type="submit"
           disabled={isPosting || isValidatingAuth}
-          className={`w-full h-16 rounded-xl shadow-lg text-white ${
+          className={`w-full h-[70px] rounded-xl shadow-lg text-white font-medium text-base ${
             hasCredentials && !isValidatingAuth
-              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90'
+              ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 shadow-[0_0_15px_rgba(124,58,237,0.5)]'
               : 'bg-gradient-to-r from-indigo-400/70 to-purple-500/70 hover:from-indigo-500 hover:to-purple-600'
-          } transition-all duration-300`}
+          } transition-all duration-300 px-8`}
         >
           {isValidatingAuth ? (
             <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
               Verificando...
             </>
           ) : isPosting ? (
             <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
               {isScheduled ? 'Agendando postagem...' : `Publicando no Instagram ${getPostTypeText()}...`}
             </>
           ) : (
             <>
-              {isScheduled ? <Calendar className="mr-2 h-5 w-5" /> : <Instagram className="mr-2 h-5 w-5" />}
+              {isScheduled ? <Calendar className="mr-3 h-5 w-5" /> : <Instagram className="mr-3 h-6 w-6" />}
+              <span className="font-semibold">
               {hasCredentials
                 ? isScheduled
                   ? `Agendar para o Instagram ${getPostTypeText()}`
                   : `Publicar no Instagram ${getPostTypeText()}`
                 : 'Fazer login no Instagram para publicar'}
+              </span>
             </>
           )}
         </Button>
 
         {!hasCredentials && loginError && !isValidatingAuth && (
-          <p className="text-center text-red-400 mt-2 text-sm">{loginError}</p>
+          <p className="text-center text-red-400 mt-3 text-sm">{loginError}</p>
         )}
       </form>
 

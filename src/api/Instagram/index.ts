@@ -1,6 +1,45 @@
 import { API } from '@/api/index';
 
-const checkInstagramCredentials = () => API.get('/instagram/check-credentials');
+// Modificado para usar a URL absoluta correta e tratar erros de resposta HTML
+const checkInstagramCredentials = () => {
+  const token = localStorage.getItem('token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    'jwt-token': token || '',
+    'Authorization': token ? `Bearer ${token}` : '',
+    'Accept': 'application/json' // Garantir que estamos solicitando JSON
+  };
+
+  // Usando o domínio correto e verificando a resposta para tratar HTML
+  return API.get('/instagram/check-credentials', { headers })
+    .then(response => {
+      // Verificar se a resposta parece ser HTML
+      if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+        console.error('Recebeu HTML em vez de JSON na verificação de credenciais');
+        // Retornar um objeto simulado com resposta de erro
+        return {
+          status: 400,
+          data: {
+            has_credentials: false,
+            error: 'Resposta inválida do servidor'
+          }
+        };
+      }
+      return response;
+    })
+    .catch(error => {
+      console.error('Erro na verificação de credenciais do Instagram:', error);
+      // Retornar um objeto simulado com resposta de erro
+      return {
+        status: 400,
+        data: {
+          has_credentials: false,
+          error: error.message || 'Erro na verificação de credenciais'
+        }
+      };
+    });
+};
 
 const connectInstagram = ({ username, password }: { username: string; password: string }) =>
   API.post('/instagram/connect', { username, password });
@@ -40,9 +79,34 @@ const completeOAuthFlow = (tempCode: string) => {
     'Content-Type': 'application/json',
     'jwt-token': token || '',
     'Authorization': token ? `Bearer ${token}` : '',
+    'Accept': 'application/json'
   };
   
-  return API.post('/instagram/oauth/complete', { temp_code: tempCode }, { headers });
+  return API.post('/instagram/oauth/complete', { temp_code: tempCode }, { headers })
+    .then(response => {
+      // Verificar se a resposta parece ser HTML
+      if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+        console.error('Recebeu HTML em vez de JSON na completação OAuth');
+        return {
+          status: 400,
+          data: {
+            success: false,
+            error: 'Resposta inválida do servidor'
+          }
+        };
+      }
+      return response;
+    })
+    .catch(error => {
+      console.error('Erro no fluxo OAuth:', error);
+      return {
+        status: 400,
+        data: {
+          success: false,
+          error: error.message || 'Erro no fluxo OAuth'
+        }
+      };
+    });
 };
 
 // Nova função para publicação direta via OAuth
@@ -69,6 +133,7 @@ const publishToInstagram = ({
     'Content-Type': 'application/json',
     'jwt-token': token || '',
     'Authorization': token ? `Bearer ${token}` : '',
+    'Accept': 'application/json'
   };
 
   return API.post('/instagram/oauth/publish', {
@@ -79,7 +144,71 @@ const publishToInstagram = ({
     video_url,
     caption,
     hashtags
-  }, { headers });
+  }, { headers })
+  .then(response => {
+    // Verificar se a resposta parece ser HTML
+    if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+      console.error('Recebeu HTML em vez de JSON na publicação');
+      return {
+        status: 400,
+        data: {
+          success: false,
+          error: 'Resposta inválida do servidor'
+        }
+      };
+    }
+    return response;
+  })
+  .catch(error => {
+    console.error('Erro na publicação:', error);
+    return {
+      status: 400,
+      data: {
+        success: false,
+        error: error.message || 'Erro na publicação'
+      }
+    };
+  });
+};
+
+// Nova função para revogar acesso OAuth do Instagram
+const revokeInstagramOAuth = (username: string) => {
+  const token = localStorage.getItem('token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    'jwt-token': token || '',
+    'Authorization': token ? `Bearer ${token}` : '',
+    'Accept': 'application/json'
+  };
+
+  return API.post('/instagram/oauth/revoke', {
+    username
+  }, { headers })
+  .then(response => {
+    // Verificar se a resposta parece ser HTML
+    if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+      console.error('Recebeu HTML em vez de JSON na revogação OAuth');
+      return {
+        status: 400,
+        data: {
+          success: false,
+          error: 'Resposta inválida do servidor'
+        }
+      };
+    }
+    return response;
+  })
+  .catch(error => {
+    console.error('Erro na revogação OAuth:', error);
+    return {
+      status: 400,
+      data: {
+        success: false,
+        error: error.message || 'Erro na revogação OAuth'
+      }
+    };
+  });
 };
 
 const disconnectInstagram = ({ username }: { username: string }) => API.post('/instagram/disconnect', { username });
@@ -114,6 +243,7 @@ const InstagramAPI = {
   disconnectInstagram,
   postToInstagram,
   publishToInstagram,
+  revokeInstagramOAuth,
   getInstagramPosts,
   getAllInstagramPosts,
   checkInstagramCredentials,

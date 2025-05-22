@@ -1,19 +1,26 @@
 import Axios from 'axios';
 
-// Em desenvolvimento, o proxy do Vite vai interceptar automaticamente as requisições
-// e encaminhá-las para o servidor correto sem problemas de CORS
-// Mantemos a URL original, já que o proxy no Vite está configurado por path
-export const API_URL = 'https://systemsrvdsv.cloud';
+// Determinar qual URL da API usar com base no ambiente
+const isDev = import.meta.env.DEV;
+
+// URL da API - Em desenvolvimento, usamos uma string vazia para que as requisições 
+// sejam feitas diretamente na raiz, e o proxy do Vite intercepta
+export const API_URL = isDev 
+  ? '' // Em desenvolvimento, URL vazia para requisições diretas na raiz
+  : 'https://insta-job-igff.vercel.app'; // Em produção, usamos a URL completa
+
+console.log('Ambiente:', isDev ? 'desenvolvimento' : 'produção');
+console.log('API URL configurada como:', API_URL || '(URL raiz)');
 
 export const API = Axios.create({
-  baseURL: '',  // Deixamos vazio para usar URLs relativas que o proxy do Vite irá interceptar
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 // Log para debug
-console.log('API configurada para usar proxy transparente em desenvolvimento');
+console.log('API configurada para baseURL:', API_URL || '(URL raiz)');
 
 export const setToken = (token: string) => {
   if (token && typeof token === 'string') {

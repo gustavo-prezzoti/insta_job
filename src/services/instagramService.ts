@@ -440,40 +440,20 @@ export const checkInstagramCredentials = async (): Promise<{
     // Verificar no banco de dados primeiro
     const response = await InstagramAPI.checkInstagramCredentials();
 
-    if (response.status !== 200) {
-      return { hasCredentials: false };
+    // Verificar se a resposta está correta e não é HTML
+    if (response.status === 200 && response.data && response.data.has_credentials) {
+      console.log('API retornou credenciais do Instagram', response.data);
+      return { 
+        hasCredentials: true, 
+        username: response.data.usernames?.[0], 
+        usernames: response.data.usernames 
+      };
     }
-
-    if (response.data.has_credentials) {
-      return { hasCredentials: true, username: response.data.usernames[0], usernames: response.data.usernames };
-    }
-
-    return { hasCredentials: false };
-
-    const { data, error } = response.data;
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (session) {
-      const { data, error } = await supabase
-        .from('instagram_credentials')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .eq('is_active', true)
-        .limit(1) as SupabaseResponse<InstagramCredentialsTable[]>;
-
-      if (!error && data && data.length > 0) {
-        const credentials = data[0];
-        if (credentials && credentials.is_active) {
-          console.log('Credenciais encontradas no banco de dados:', credentials.username);
-          return { hasCredentials: true, username: credentials.username };
-        }
-      }
-    }
-
-    // Se não encontrar no banco ou não estiver logado, verificar no localStorage
+    
+    // Se a API falhou ou retornou HTML, tentar verificar no localStorage
+    console.log('API não retornou credenciais válidas, verificando no localStorage');
+    
+    // Verificar no localStorage como fallback
     const storedCredentials = localStorage.getItem('instagram_credentials');
     if (storedCredentials) {
       try {
@@ -483,7 +463,7 @@ export const checkInstagramCredentials = async (): Promise<{
 
         if (hoursElapsed <= 24) {
           console.log('Credenciais encontradas no localStorage:', username);
-          return { hasCredentials: true, username };
+          return { hasCredentials: true, username, usernames: [username] };
         } else {
           console.log('Credenciais do localStorage expiradas');
           localStorage.removeItem('instagram_credentials');
@@ -492,11 +472,39 @@ export const checkInstagramCredentials = async (): Promise<{
         console.error('Erro ao verificar credenciais no localStorage:', error);
       }
     }
-
+    
+    // Verificar flags especiais de autenticação
+    if (localStorage.getItem('instagram_connected') === 'true') {
+      const username = localStorage.getItem('instagram_username') || 'instagram_user';
+      console.log('Flag de conexão com Instagram encontrada, usando username:', username);
+      return { hasCredentials: true, username, usernames: [username] };
+    }
+    
+    // Se chegamos aqui, não foi possível encontrar credenciais
     console.log('Nenhuma credencial válida encontrada');
     return { hasCredentials: false };
   } catch (error) {
     console.error('Erro ao verificar credenciais do Instagram:', error);
+    
+    // Em caso de erro, verificar localStorage como último recurso
+    const storedCredentials = localStorage.getItem('instagram_credentials');
+    if (storedCredentials) {
+      try {
+        const { username } = JSON.parse(storedCredentials) as InstagramLocalCredentials;
+        console.log('Usando credenciais do localStorage após erro:', username);
+        return { hasCredentials: true, username, usernames: [username] };
+      } catch (e) {
+        console.error('Erro ao analisar credenciais do localStorage:', e);
+      }
+    }
+    
+    // Verificar flags especiais de autenticação como último recurso
+    if (localStorage.getItem('instagram_connected') === 'true') {
+      const username = localStorage.getItem('instagram_username') || 'instagram_user';
+      console.log('Usando flag de conexão com Instagram após erro, username:', username);
+      return { hasCredentials: true, username, usernames: [username] };
+    }
+    
     return { hasCredentials: false };
   }
 };
@@ -587,18 +595,26 @@ export const publishToInstagramWithOAuth = async (
     // Verificando se temos credenciais do Instagram
     const { hasCredentials, username } = await checkInstagramCredentials();
 
-    if (!hasCredentials || !username) {
-      return { success: false, error: 'Credenciais do Instagram não encontradas. Faça login novamente.' };
+    // Se não tiver um username do Instagram, tentar usar um nome de usuário padrão ou configurado
+    const effectiveUsername = username || localStorage.getItem('instagram_username') || 'postagensai';
+
+    if (!hasCredentials) {
+      // Se não temos credenciais mas temos uma flag de conexão, tentar usar o username padrão
+      if (localStorage.getItem('instagram_connected') === 'true') {
+        console.log('Usando instagram_connected flag com username padrão:', effectiveUsername);
+      } else {
+        return { success: false, error: 'Credenciais do Instagram não encontradas. Faça login novamente.' };
+      }
     }
 
-    console.log('Preparando para publicar no Instagram com OAuth:', username);
+    console.log('Preparando para publicar no Instagram com OAuth:', effectiveUsername);
 
     // Formatar a data de agendamento se existir
     const schedule_date = scheduledDate ? scheduledDate.toISOString() : undefined;
 
     // Chamando a API para publicar via OAuth
     const response = await InstagramAPI.publishToInstagram({
-      username,
+      username: effectiveUsername,
       type: postType,
       when,
       schedule_date,
@@ -611,7 +627,7 @@ export const publishToInstagramWithOAuth = async (
       console.error('Erro na resposta da API:', response.data);
       return { 
         success: false, 
-        error: response.data?.message || 'Erro ao publicar no Instagram.' 
+        error: response.data?.message || response.data?.error || 'Erro ao publicar no Instagram.' 
       };
     }
 
@@ -634,6 +650,9 @@ export const logoutFromInstagram = async (): Promise<boolean> => {
   try {
     // Remover do localStorage
     localStorage.removeItem('instagram_credentials');
+    localStorage.removeItem('instagram_connected');
+    localStorage.removeItem('instagram_username');
+    localStorage.removeItem('instagram_auth_successful');
 
     // Verificar se o usuário está autenticado para remover do banco
     const {
@@ -657,5 +676,52 @@ export const logoutFromInstagram = async (): Promise<boolean> => {
   } catch (error) {
     console.error('Erro ao fazer logout do Instagram:', error);
     return false;
+  }
+};
+
+// Nova função para revogar o acesso OAuth do Instagram
+export const revokeInstagramOAuth = async (username: string): Promise<{ success: boolean; error?: string; revokedAccounts?: string[] }> => {
+  try {
+    console.log(`Revogando acesso OAuth para o usuário ${username}`);
+    
+    // Chamar a API para revogar o acesso
+    const response = await InstagramAPI.revokeInstagramOAuth(username);
+    
+    if (response.status !== 200) {
+      console.error('Erro na resposta da API de revogação:', response.data);
+      return { 
+        success: false, 
+        error: response.data?.message || response.data?.error || 'Erro ao revogar acesso do Instagram.' 
+      };
+    }
+    
+    // Verificar se a resposta tem o formato esperado
+    if (response.data?.status === 'success') {
+      console.log('Resposta de revogação:', response.data);
+      
+      // Extrair contas revogadas da resposta
+      const revokedAccounts = response.data.revoked_accounts || [];
+      
+      // Limpar dados locais relacionados ao Instagram
+      await logoutFromInstagram();
+      
+      console.log(`Acesso OAuth revogado com sucesso para ${revokedAccounts.length} conta(s): ${revokedAccounts.join(', ')}`);
+      return { 
+        success: true,
+        revokedAccounts
+      };
+    } else {
+      console.error('Resposta da API não indica sucesso:', response.data);
+      return { 
+        success: false, 
+        error: response.data?.message || 'Resposta da API não indica sucesso na revogação.' 
+      };
+    }
+  } catch (error) {
+    console.error('Erro ao revogar acesso OAuth:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Erro inesperado ao revogar acesso do Instagram.' 
+    };
   }
 };
