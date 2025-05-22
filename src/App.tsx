@@ -29,7 +29,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<Index />} /> 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/update-password" element={<UpdatePasswordPage />} />
               <Route path="/schedule" element={<SchedulePage />} />
