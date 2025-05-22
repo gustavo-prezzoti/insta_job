@@ -242,20 +242,20 @@ const PostActions = ({
   return (
     <>
       {hasCredentials && (
-        <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between bg-white/5 backdrop-blur-sm rounded-xl p-5 border border-white/10 shadow-lg">
-          <div className="flex items-center w-full md:w-auto mb-3 md:mb-0">
-            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mr-4">
-              <Instagram className="h-5 w-5 text-white" />
+        <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between bg-white/5 backdrop-blur-sm rounded-xl p-4 sm:p-5 border border-white/10 shadow-lg">
+          <div className="flex items-center w-full mb-4 md:mb-0">
+            <div className="flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mr-3 sm:mr-4 flex-shrink-0">
+              <Instagram className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
             </div>
-            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
-              <span className="text-sm font-medium text-white/80">Conectado como</span>
+            <div className="flex flex-col w-full md:flex-row md:items-center gap-1 md:gap-3">
+              <span className="text-sm font-medium text-white/80 whitespace-nowrap">Conectado como</span>
               <Select value={instagramUsername || ''} onValueChange={handleChangeAccount}>
                 <SelectTrigger
                   className="w-full md:w-[200px] h-9 text-sm bg-gradient-to-r from-purple-500/10 to-pink-500/10
                   border border-white/20 rounded-md hover:border-pink-400/50 transition-all duration-200
                   focus:ring-pink-400/30 focus:border-pink-400/50 focus:ring-2 focus:ring-offset-0"
                 >
-                  <SelectValue placeholder="Selecione uma conta" className="font-medium" />
+                  <SelectValue placeholder="Selecione uma conta" className="font-medium truncate" />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900/95 border border-white/20 rounded-md shadow-xl backdrop-blur-sm">
                   <div className="p-1">
@@ -302,16 +302,16 @@ const PostActions = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center w-full md:w-auto justify-end space-x-2 sm:space-x-3">
             {!instagramUsernames.length && (
               <Button
                 onClick={handleSwitchAccount}
                 variant="ghost"
                 size="sm"
-                className="text-xs flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-md"
+                className="text-xs flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-md flex-grow md:flex-grow-0"
               >
-                <PlusCircle className="h-3.5 w-3.5" />
-                Adicionar conta
+                <PlusCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <span className="whitespace-nowrap">Adicionar conta</span>
               </Button>
             )}
 
@@ -320,10 +320,10 @@ const PostActions = ({
               variant="ghost"
               size="sm"
               disabled={isDisconnecting}
-              className="text-xs flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-white/20 rounded-md"
+              className="text-xs flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-2 bg-red-500/10 hover:bg-red-500/20 border border-white/20 rounded-md flex-grow md:flex-grow-0"
             >
-              {isDisconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOutIcon className="h-3.5 w-3.5" />}
-              {isDisconnecting ? 'Desconectando...' : 'Desconectar conta'}
+              {isDisconnecting ? <Loader2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 animate-spin" /> : <LogOutIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
+              <span className="whitespace-nowrap">{isDisconnecting ? 'Desconectando...' : 'Desconectar conta'}</span>
             </Button>
           </div>
         </div>
@@ -333,25 +333,25 @@ const PostActions = ({
         <Button
           type="submit"
           disabled={isPosting || isValidatingAuth}
-          className={`w-full h-[70px] rounded-xl shadow-lg text-white font-medium text-base ${
+          className={`w-full h-[60px] sm:h-[70px] rounded-xl shadow-lg text-white font-medium text-sm sm:text-base ${
             hasCredentials && !isValidatingAuth
               ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 shadow-[0_0_15px_rgba(124,58,237,0.5)]'
               : 'bg-gradient-to-r from-indigo-400/70 to-purple-500/70 hover:from-indigo-500 hover:to-purple-600'
-          } transition-all duration-300 px-8`}
+          } transition-all duration-300 px-4 sm:px-8`}
         >
           {isValidatingAuth ? (
             <>
-              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+              <Loader2 className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
               Verificando...
             </>
           ) : isPosting ? (
             <>
-              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+              <Loader2 className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
               {isScheduled ? 'Agendando postagem...' : `Publicando no Instagram ${getPostTypeText()}...`}
             </>
           ) : (
             <>
-              {isScheduled ? <Calendar className="mr-3 h-5 w-5" /> : <Instagram className="mr-3 h-6 w-6" />}
+              {isScheduled ? <Calendar className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5" /> : <Instagram className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6" />}
               <span className="font-semibold">
               {hasCredentials
                 ? isScheduled
